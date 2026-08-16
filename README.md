@@ -30,13 +30,29 @@ sudo docker build -t docker_image_compilation_k8s -f src/Dockerfile_k8s .
 
 ## Running
 
+### Container-Only (no host Python environment)
+
+Clone, compile and validate all happen inside one container — the host needs only
+Docker. See [CONTAINER_ONLY.md](CONTAINER_ONLY.md).
+
+```bash
+./scripts/run_container.sh build
+API_KEY=$API_KEY ./scripts/run_container.sh run https://github.com/user/repo.git
+```
+
+The modes below instead drive containers from the host, which requires the
+`requirements.txt` environment (including `pyjoern` and a JVM for validation).
+
 ### Single Repository (Local Docker)
 
 ```bash
 python3 src/main.py --api_key=$API_KEY --model_name=o3-mini \
   --github_repo=https://github.com/user/repo.git --random=-1 \
-  --host_project_dir=$(pwd)
+  --host_project_dir=$(pwd) --docker_image=docker_image_compilation
 ```
+
+Note the explicit `--docker_image`: the default is the published K8S image, whose
+`ENTRYPOINT` makes it exit immediately when driven by `src/main.py`.
 
 ### All Repositories (Local Docker)
 

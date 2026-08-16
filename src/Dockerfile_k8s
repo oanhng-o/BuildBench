@@ -1,8 +1,10 @@
-FROM buildbench/compilation_base_image:17
+# Base image. Defaults to the published one so the K8S build is unchanged;
+# override to build fully offline from a locally built base:
+#   docker build --build-arg BASE_IMAGE=docker_image_compilation \
+#       -t buildbench_worker -f src/Dockerfile_k8s .
+ARG BASE_IMAGE=buildbench/compilation_base_image:17
+FROM ${BASE_IMAGE}
 
-COPY src /app/src 
-# COPY worker_main.py /app/src/worker_main.py
+COPY src /app/src
 WORKDIR /app/src
 ENTRYPOINT ["/opt/venv/bin/python", "/app/src/worker_main.py"]
-
-

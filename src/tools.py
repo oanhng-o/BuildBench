@@ -23,7 +23,7 @@ def parse_args(default_values):
     
     parser = argparse.ArgumentParser(description='Multi-LLM Compilation Agent')
     parser.add_argument('--human_in_loop', type=bool, default=False, help='Whether to enable human in the loop')
-    parser.add_argument('--model_name', type=str, default=default_values["MODEL_NAME"], choices=['gpt-4o', 'o3-mini', 'gemini-2.5-flash', 'claude-3-7-sonnet-20250219', 'Qwen/Qwen3-235B-A22B-Instruct-2507:together', 'Qwen/Qwen3-Coder-480B-A35B-Instruct:novita'],help='Name of the model')
+    parser.add_argument('--model_name', type=str, default=default_values["MODEL_NAME"], choices=['gpt-4o', 'o3-mini', 'gemini-2.5-flash', 'claude-3-7-sonnet-20250219', 'deepseek-v4-flash', 'deepseek-v4-pro','Qwen/Qwen3-235B-A22B-Instruct-2507:together', 'Qwen/Qwen3-Coder-480B-A35B-Instruct:novita'],help='Name of the model')
     parser.add_argument('--max_tokens', type=int, default=default_values["MAX_TOKENS"], help='Maximum tokens as input for the model')
     parser.add_argument('--api_key', type=str, default=default_values['API_KEY'], help='API key')
     parser.add_argument('--temperature', type=float, default=default_values["TEMPERATURE"], help='Temperature for the model')
@@ -470,10 +470,13 @@ def extract_tarball_subprocess(tarball_path: str, extract_to_dir: str) -> None:
     # Run a subprocess to call the 'tar' command
     # 'z' for gzip, 'x' for extract, 'f' for specifying the file
     # '-C' to change to the extraction directory
+    # --no-same-owner: on a bind mount backed by a VM (Docker Desktop) or on NFS
+    # with root_squash, restoring uid/gid 0 fails and tar exits 2.
     subprocess.run([
         "tar",
         "-xzf",
         tarball_path,
+        "--no-same-owner",
         "-C",
         extract_to_dir
     ], check=True)

@@ -1,0 +1,30 @@
+# Keep the build context small: only src/ is ever COPYed into an image, and
+# runtime output directories can grow to tens of GB.
+.git
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+
+cloned_repos/
+compiled_repos/
+compiled_results/
+all_logs/
+autogen_logs/
+orchestrator_logs/
+postprocessed_results/
+validation/
+validation_analysis/
+validation_test/
+yaml_files/
+workspace/
+vector_store/
+config/
+
+*.tar.gz
+*.log
+*.out
+.env
+*.key
+.cache/
+.chromadb/

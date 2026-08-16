@@ -11,6 +11,7 @@ build/
 *.key
 
 # Runtime outputs
+config/
 cloned_repos/
 compiled_repos/
 compiled_results/

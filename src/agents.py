@@ -75,7 +75,20 @@ class Agent:
         elif 'gemini' in self.model_name.lower():
             print("Using Gemini model for compilation")
             self.llm_config['base_url'] = "https://generativelanguage.googleapis.com/v1beta/openai/"
-        if self.model_name == 'o3-mini':
+        elif 'deepseek' in self.model_name.lower():
+            print("Using DeepSeek model for compilation")
+            ### OpenAI-compatible endpoint; override for a proxy or a self-hosted deployment
+            self.llm_config['base_url'] = os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com/v1"
+        ### AutoGen prices a run from its own hardcoded table (OAI_PRICE1K), which
+        ### only covers OpenAI/Anthropic ids. Anything else logs "Model X is not
+        ### found. The cost will be 0" and reports zero. MODEL_PRICE supplies the
+        ### rate as "<prompt>,<completion>" per 1K tokens, so a new provider or a
+        ### price change needs no code edit.
+        model_price = os.environ.get("MODEL_PRICE")
+        if model_price:
+            self.llm_config['price'] = [float(p) for p in model_price.split(',')]
+            print(f"Using MODEL_PRICE {self.llm_config['price']} per 1K tokens for cost reporting")
+        elif self.model_name == 'o3-mini':
             print("Using O3-mini model for compilation")
             self.llm_config['price'] =  [0.0011, 0.0044]
         elif self.model_name == 'gpt-4.1':

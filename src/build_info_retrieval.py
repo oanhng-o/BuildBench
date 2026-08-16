@@ -35,6 +35,7 @@ TAVILY_API_KEY = os.environ.get('TAVILY_API_KEY')
 MODEL_NAME = os.environ.get("MODEL_NAME")
 HUGGINGFACE_BASE_URL = "https://router.huggingface.co/v1"
 GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
+DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com/v1"
 
 # Lazy initialization — keys are required at runtime, not import time
 if MODEL_NAME:
@@ -44,6 +45,8 @@ if MODEL_NAME:
         print("Qwen model is in use for retrieval")
     elif 'gemini' in str(MODEL_NAME).lower():
         print("Gemini model is in use for retrieval")
+    elif 'deepseek' in str(MODEL_NAME).lower():
+        print("DeepSeek model is in use for retrieval")
     else:
         print(f"{MODEL_NAME} model is in use for retrieval")
 
@@ -60,7 +63,7 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
                 api_key = API_KEY,                
             )
         response = client.messages.create(
-            model="claude-3-7-sonnet-20250219",
+            model=model_name,
             max_tokens=2000,
             # temperature=1,
             system=system_prompt,
@@ -88,7 +91,7 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
             api_key=API_KEY,
         )
         response = client.responses.parse(
-            model=MODEL_NAME,
+            model=model_name,
             input=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": input},
@@ -102,7 +105,7 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
                 base_url=HUGGINGFACE_BASE_URL)
         
         completion = client.chat.completions.create(
-            model=MODEL_NAME,
+            model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": input}
@@ -131,7 +134,7 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
         # output = response.output_parsed
         client = genai.Client(api_key=API_KEY)
         response = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model=model_name,
         contents=system_prompt + input,
         config={
             "response_mime_type": "application/json",
@@ -139,6 +142,28 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
             },
         )
         output = response.parsed
+    elif 'deepseek' in str(model_name).lower():
+        ### DeepSeek's OpenAI-compatible API offers JSON mode but not json_schema,
+        ### so the shape goes in the prompt and is validated on the way out. JSON
+        ### mode also requires the word "json" to appear in the prompt.
+        system_prompt += (
+            "\nRespond with json only, matching this schema: "
+            + json.dumps(response_format.model_json_schema())
+        )
+        client = OpenAI(api_key=API_KEY, base_url=DEEPSEEK_BASE_URL)
+        completion = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": input}
+            ],
+            response_format={"type": "json_object"},
+        )
+        response = completion.choices[0].message.content
+        if response.startswith("```json"):
+            response = response[7:-3]
+        output = response_format(**json.loads(response))
+
     else:
         print(f"{model_name} is an unsupported model type. Please use a supported model.")
         output = response_format()

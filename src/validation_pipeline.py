@@ -273,7 +273,12 @@ def extract_binary_functions(artifacts_directory,  logger,output_file_path =None
     
     artifacts_file_paths = find_linux_compiled_artifacts(directory=artifacts_directory, logger=logger, max_workers=max_workers) # Traverse through the repository directory and find all the files with '.o', '.a', '.so', '.out', '.bin' extension, output absolute paths
 
-    assert artifacts_file_paths, f"No Linux compiled artifacts found in directory: {artifacts_directory}"
+    ### A repo that failed to build legitimately has no artifacts. Report it as an
+    ### empty result so the caller can record 0% compiled, rather than raising and
+    ### taking down the whole run.
+    if not artifacts_file_paths:
+        safe_log(logger, 'warning', f"No Linux compiled artifacts found in directory: {artifacts_directory}")
+        return [], 0
 
     function_info = []
     function_names = []
@@ -381,11 +386,11 @@ def validation_pipeline(repo_name, output_file_path, source_directory = None, ar
 
         if len(source_function_names) == 0:
             logger.info("No source functions found")
-            return False, None
+            return False, None, len(binary_function_names), 0, binary_file_num, source_file_num
         elif len(binary_function_names) == 0:
             logger.info("No binary functions found")
-            return False, None
-        
+            return False, None, 0, len(source_function_names), binary_file_num, source_file_num
+
         compiled_percentage = 1 - len(missing_functions) / len(source_function_names)
         compiled_percentage = round(compiled_percentage, 3)
         if compiled_percentage >= threshold:
@@ -396,6 +401,11 @@ def validation_pipeline(repo_name, output_file_path, source_directory = None, ar
             final_result = False
             
         return final_result, compiled_percentage, len(binary_function_names), len(source_function_names), binary_file_num, source_file_num
+
+    ### Reached when either directory is None or empty: nothing could be compared.
+    ### Callers unpack six values, so keep the arity stable instead of returning None.
+    logger.info("Validation skipped: source and/or artifacts directory is missing or empty")
+    return False, None, len(binary_function_names), len(source_function_names), binary_file_num, source_file_num
 
 
 # def validation_pipeline_by_agent(repo_name: str, max_workers:int =8,):

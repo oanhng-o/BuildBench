@@ -62,7 +62,9 @@ RUN apt-get update && \
 RUN python3.10 -m venv /opt/venv && \
     /opt/venv/bin/pip install --upgrade pip
 
-RUN /opt/venv/bin/pip install pyjoern==4.0.61.2  && \
+# playwright has to be installed in this same layer: the CLI is invoked below,
+# and the pip layer that used to provide it comes later in the file.
+RUN /opt/venv/bin/pip install pyjoern==4.0.61.2 playwright && \
         /opt/venv/bin/python -c "import pyjoern" && \
 /opt/venv/bin/playwright install-deps && /opt/venv/bin/playwright install
 
@@ -81,6 +83,8 @@ RUN /opt/venv/bin/pip install \
         pandas \
         flaml==2.2.0 \
         cxxfilt \
+        python-dotenv \
+        nest_asyncio \
         # pyjoern==4.0.61.2   \
         pyelftools \
         markdownify \ 
