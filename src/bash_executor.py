@@ -24,6 +24,7 @@ from autogen.coding.markdown_code_extractor import MarkdownCodeExtractor
 from autogen.coding.utils import _get_file_name_from_content, silence_pip
 
 import tools
+import langfuse_tracing as tracing
 
 
 class BashCodeExecutor(LocalCommandLineCodeExecutor):
@@ -105,15 +106,29 @@ class BashCodeExecutor(LocalCommandLineCodeExecutor):
                     activation_script = os.path.join(virtual_env_abs_path, "activate.bat")
                     cmd = [activation_script, "&&", *cmd]
 
-            try:
-                result = subprocess.run(
-                    cmd, cwd=self._work_dir, capture_output=True, text=True, timeout=float(self._timeout), env=env
+            # A span per command: what the agent ran, and how it went. This is
+            # where most of a failed build is explained, so it is worth having
+            # next to the LLM calls in the trace.
+            with tracing.step("bash", as_type="tool", input=code,
+                              metadata={"language": lang, "timeout": self._timeout}) as cmd_span:
+                try:
+                    result = subprocess.run(
+                        cmd, cwd=self._work_dir, capture_output=True, text=True, timeout=float(self._timeout), env=env
+                    )
+                except subprocess.TimeoutExpired:
+                    tracing.update(cmd_span, output=TIMEOUT_MSG, level="WARNING",
+                                   status_message="timed out")
+                    logs_all += "\n" + TIMEOUT_MSG
+                    # Same exit code as the timeout command on linux.
+                    exitcode = 124
+                    break
+
+                tracing.update(
+                    cmd_span,
+                    output=result.stdout if result.returncode == 0 else result.stderr,
+                    metadata={"exit_code": result.returncode},
+                    level="ERROR" if result.returncode != 0 else None,
                 )
-            except subprocess.TimeoutExpired:
-                logs_all += "\n" + TIMEOUT_MSG
-                # Same exit code as the timeout command on linux.
-                exitcode = 124
-                break
 
 
             ###########################################

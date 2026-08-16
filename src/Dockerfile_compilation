@@ -85,6 +85,11 @@ RUN /opt/venv/bin/pip install \
         cxxfilt \
         python-dotenv \
         nest_asyncio \
+        # Tracing. langfuse is pinned to the major version because v4 renamed
+        # most of the API; the anthropic instrumentation is only used by Claude
+        # runs, every other provider goes through the patched OpenAI SDK.
+        "langfuse>=4,<5" \
+        opentelemetry-instrumentation-anthropic \
         # pyjoern==4.0.61.2   \
         pyelftools \
         markdownify \ 

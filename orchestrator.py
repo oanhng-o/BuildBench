@@ -129,6 +129,16 @@ def main(args):
     
     # env_vars.append({'name': 'API_KEY', 'value': args.api_key})
     # env_vars.append({'name': 'SUDO_PASSWORD', 'value': args.sudo_password})
+
+    # Tracing config is not an argparse argument; take it from the environment
+    # the orchestrator itself runs in. Absent, the pods simply do not trace.
+    # BUILDBENCH_RUN_ID makes one submission one Langfuse session.
+    env_vars.append({'name': 'BUILDBENCH_RUN_ID', 'value': os.environ.get('BUILDBENCH_RUN_ID', start_time)})
+    for key in ('LANGFUSE_PUBLIC_KEY', 'LANGFUSE_SECRET_KEY', 'LANGFUSE_BASE_URL',
+                'LANGFUSE_TRACING', 'LANGFUSE_ENVIRONMENT'):
+        value = os.environ.get(key)
+        if value:
+            env_vars.append({'name': key, 'value': value})
     if "env" not in container:
         container["env"] = []
     container["env"].extend(env_vars)

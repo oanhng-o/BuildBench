@@ -14,8 +14,7 @@ from langchain_community.document_loaders import WebBaseLoader
 import tiktoken 
 import nest_asyncio
 nest_asyncio.apply()
-from dotenv import load_dotenv
-load_dotenv()
+import env_config
 
 from build_info_retrieval import get_readme_path, get_build_dict, read_file
 from tools import is_valid_url
@@ -51,7 +50,7 @@ class RAGRetrieval:
         
         
         self.index_path = index_path
-        self.embeddings = OpenAIEmbeddings(model='text-embedding-3-small', api_key=os.getenv("OPENAI_KEY"))
+        self.embeddings = OpenAIEmbeddings(model='text-embedding-3-small', api_key=env_config.get("OPENAI_KEY"))
         self.vector_store = None
 
     def get_local_documents_path(self):

@@ -9,7 +9,8 @@ from time import time
 import datetime
 import filecmp
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from default_values import DEFAULT_VALUES  
+import langfuse_tracing as tracing
+from default_values import DEFAULT_VALUES
 from log_parse import generate_parsed_files
 from validation_pipeline import validation_pipeline
 from tools import setup_logger, remove_and_copy_directory_wrapper, clone_repository, parse_args, get_target_github_repos
@@ -86,7 +87,14 @@ def main(args):
         else:
             str_value = value
         docker_env_vars[key.upper()] = str_value
-    
+
+    # This process scores the traces the containers write, so it has to agree
+    # with them on the run id -- hence one shared value, resolved here and
+    # passed down. EXPERIMENT_START_TIME names the run in the logs; reuse it.
+    os.environ.setdefault("BUILDBENCH_RUN_ID", EXPERIMENT_START_TIME)
+    tracing.init()
+    docker_env_vars.update(tracing.forwarded_env())
+
     ### Get the list of target GitHub repositories based on args
     github_repos = get_target_github_repos(args, DEFAULT_VALUES, data_path=args.data_path, github_token=args.github_token)
     
@@ -160,8 +168,12 @@ def main(args):
                 
                 with open(results_file_path, 'w') as f:
                     json.dump(previous_results, f, indent=4)
-                       
-                
+
+                ### Same trace the container's agents wrote: the id is derived
+                ### from the shared run id and the repo name.
+                tracing.score(repo_name, "compiled_percentage", float(compiled_percentage))
+                tracing.score(repo_name, "is_compiled", float(bool(is_compiled)), data_type="BOOLEAN")
+
             return repo_name, success
         
         
@@ -198,5 +210,8 @@ if __name__ == '__main__':
     with open(args_save_location, 'w') as f:
         json.dump(vars(args), f)
         
-    main(args)
+    try:
+        main(args)
+    finally:
+        tracing.shutdown()
     print("Total time taken for the entire process:", time() - start)

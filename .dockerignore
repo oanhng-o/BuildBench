@@ -25,6 +25,7 @@ config/
 *.log
 *.out
 .env
+.buildbench-env.*
 *.key
 .cache/
 .chromadb/

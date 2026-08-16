@@ -9,6 +9,9 @@ build/
 # Environment
 .env
 *.key
+# Effective config that run_container.sh mounts into the worker; normally
+# deleted when the run ends, but a killed run can leave one behind.
+.buildbench-env.*
 
 # Runtime outputs
 config/

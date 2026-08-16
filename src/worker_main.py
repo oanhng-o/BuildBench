@@ -8,6 +8,7 @@ from time import time, sleep
 import datetime
 import shutil
 import subprocess
+import langfuse_tracing as tracing
 from default_values import DEFAULT_VALUES
 from validation_pipeline import validation_pipeline
 from tools import setup_logger, remove_and_copy_directory_wrapper, create_tarball, extract_tarball_subprocess, clone_repository
@@ -130,6 +131,12 @@ def append_result(results_file_path, repo_name, repo_result):
 def main():
     repo_name = REPO_URL.split('/')[-1].replace('.git', '')
 
+    ### The build itself is traced by the compilation.py subprocess below; the
+    ### worker only joins that trace, to score it once validation has a number.
+    ### init() also exports the run id, which the subprocess inherits and uses to
+    ### derive the same trace id.
+    tracing.init()
+
     start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     execution_start_time = time()
     repo_logs_dir = os.path.join(ALL_LOGS_DIR, repo_name)
@@ -188,6 +195,9 @@ def main():
     if return_code != 0:
         errors = proc.stderr.read()
         logger.error(f"Compilation failed:\n{errors}")
+        tracing.score(repo_name, "worker_status", "compilation_failed",
+                      comment=f"compilation.py exited with {return_code}", data_type="CATEGORICAL")
+        tracing.shutdown()
         sys.exit(1)
     logger.info(f"Compilation finished for {repo_name}.")
     
@@ -231,6 +241,12 @@ def main():
     }
     logger.info(f"Final result for {repo_name}: {repo_result}")
     append_result(results_file_path, repo_name, repo_result)
+
+    ### Lands on the trace the agents wrote, so the conversation and the score it
+    ### earned sit side by side in Langfuse.
+    tracing.score(repo_name, "compiled_percentage", float(compiled_percentage))
+    tracing.score(repo_name, "is_compiled", float(bool(is_compiled)), data_type="BOOLEAN")
+    tracing.shutdown()
 
     logger.info(f"Task completed for {repo_name}. Exiting worker.")
     return True

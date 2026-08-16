@@ -5,6 +5,9 @@ import shutil
 import subprocess
 import stat
 
+import env_config
+import langfuse_tracing as tracing
+
 from autogen import runtime_logging
 from autogen import ConversableAgent, GroupChat, GroupChatManager, register_function, AssistantAgent, UserProxyAgent
 from autogen.code_utils import create_virtual_env
@@ -78,13 +81,13 @@ class Agent:
         elif 'deepseek' in self.model_name.lower():
             print("Using DeepSeek model for compilation")
             ### OpenAI-compatible endpoint; override for a proxy or a self-hosted deployment
-            self.llm_config['base_url'] = os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com/v1"
+            self.llm_config['base_url'] = env_config.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
         ### AutoGen prices a run from its own hardcoded table (OAI_PRICE1K), which
         ### only covers OpenAI/Anthropic ids. Anything else logs "Model X is not
         ### found. The cost will be 0" and reports zero. MODEL_PRICE supplies the
         ### rate as "<prompt>,<completion>" per 1K tokens, so a new provider or a
         ### price change needs no code edit.
-        model_price = os.environ.get("MODEL_PRICE")
+        model_price = env_config.get("MODEL_PRICE")
         if model_price:
             self.llm_config['price'] = [float(p) for p in model_price.split(',')]
             print(f"Using MODEL_PRICE {self.llm_config['price']} per 1K tokens for cost reporting")
@@ -378,10 +381,17 @@ class Agent:
                 # )
                 
                 # Heuristic based transition
-                chat_history_1 = self.execution_agent_no_termination.initiate_chat(
-                    self.retreiver_agent, max_turns=15,
-                    message=prompts.initial_message_retriever(), silent=False, clear_history=False, summary_args={'summary_method': 'reflection_with_llm', 'summary_prompt': 'Summarize the takeaway from the conversation. Make sure to add ALL the bash commands.'},
-                )
+                ### Built once: it walks the repository directory, and the span
+                ### wants the very message the agent was given.
+                initial_message_retriever = prompts.initial_message_retriever()
+                with tracing.step('retrieval-chat', input=initial_message_retriever,
+                                  metadata={'max_turns': 15, 'agents': ['Execution', 'Build_Instructions_Retriever']}) as chat_span:
+                    chat_history_1 = self.execution_agent_no_termination.initiate_chat(
+                        self.retreiver_agent, max_turns=15,
+                        message=initial_message_retriever, silent=False, clear_history=False, summary_args={'summary_method': 'reflection_with_llm', 'summary_prompt': 'Summarize the takeaway from the conversation. Make sure to add ALL the bash commands.'},
+                    )
+                    tracing.update(chat_span, output=chat_history_1.summary,
+                                   metadata={'cost': chat_history_1.cost})
                 
                 # retriever_last_msg = self.retreiver_agent.last_message(self.execution_agent)
                 # if retriever_last_msg != None:
@@ -391,15 +401,24 @@ class Agent:
                 
                 initial_message_compilation = prompts.initial_message_compilation()+"'Build instructions may have been preprocessed and saved in /app/retrieved_instructions.txt. Make sure to check the file for more details.'"
                 
-                chat_history_2 = self.execution_agent.initiate_chat(self.compilation_agent, max_turns=self.max_turns,
-                    message=initial_message_compilation, silent=False, clear_history=False, summary_args={'summary_method': 'reflection_with_llm', 'summary_prompt': 'Summarize the takeaway from the conversation. Make sure to add ALL the bash commands.'},
-                    )
-                    
+                with tracing.step('compilation-chat', input=initial_message_compilation,
+                                  metadata={'max_turns': self.max_turns, 'agents': ['Execution', 'Bash_Command_Generator']}) as chat_span:
+                    chat_history_2 = self.execution_agent.initiate_chat(self.compilation_agent, max_turns=self.max_turns,
+                        message=initial_message_compilation, silent=False, clear_history=False, summary_args={'summary_method': 'reflection_with_llm', 'summary_prompt': 'Summarize the takeaway from the conversation. Make sure to add ALL the bash commands.'},
+                        )
+                    tracing.update(chat_span, output=chat_history_2.summary,
+                                   metadata={'cost': chat_history_2.cost})
+
             elif len(agents_created) == 2 and self.agents_number == 2:
-                chat_history_1 = self.execution_agent.initiate_chat(
-                    self.compilation_agent, max_turns=self.max_turns,
-                    message=prompts.initial_message_compilation(), silent=False, clear_history=False, summary_args={'summary_method': 'reflection_with_llm', 'summary_prompt': 'Summarize the takeaway from the conversation. Make sure to add ALL the bash commands.'},
-                )
+                initial_message_compilation = prompts.initial_message_compilation()
+                with tracing.step('compilation-chat', input=initial_message_compilation,
+                                  metadata={'max_turns': self.max_turns, 'agents': ['Execution', 'Bash_Command_Generator']}) as chat_span:
+                    chat_history_1 = self.execution_agent.initiate_chat(
+                        self.compilation_agent, max_turns=self.max_turns,
+                        message=initial_message_compilation, silent=False, clear_history=False, summary_args={'summary_method': 'reflection_with_llm', 'summary_prompt': 'Summarize the takeaway from the conversation. Make sure to add ALL the bash commands.'},
+                    )
+                    tracing.update(chat_span, output=chat_history_1.summary,
+                                   metadata={'cost': chat_history_1.cost})
             else:
                 raise ValueError("Agents not created properly. Check the number of agents created. Currently, the number is ", len(agents_created))
             

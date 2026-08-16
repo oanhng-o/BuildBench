@@ -2,33 +2,22 @@ import os
 import argparse
 import json
 from time import time
+import env_config
+import langfuse_tracing as tracing
 from agents import Agent
 from default_values import DEFAULT_VALUES
-API_KEY = os.environ.get("API_KEY")
-SUDO_PASSWORD = os.environ.get("SUDO_PASSWORD")
-MODEL_NAME = os.environ.get("MODEL_NAME")   
-TIMEOUT_BASH = int(os.environ.get("TIMEOUT_BASH", "300"))
-AGENTS_NUMBER = int(os.environ.get("AGENTS_NUMBER", "2"))
-RETRIEVAL = os.environ.get("RETRIEVAL")
-if RETRIEVAL == 'True':
-    RETRIEVAL = True
-else:
-    RETRIEVAL = False
-PERFECT_RETRIEVAL = os.environ.get("PERFECT_RETRIEVAL")
-if PERFECT_RETRIEVAL == 'True' and RETRIEVAL:
-    PERFECT_RETRIEVAL = True
-else:
-    PERFECT_RETRIEVAL = False
-    
-RAG_RETRIEVAL = os.environ.get("RAG_RETRIEVAL")
-if RAG_RETRIEVAL == 'True' and RETRIEVAL:
-    RAG_RETRIEVAL = True
-else:
-    RAG_RETRIEVAL = False
+API_KEY = env_config.get("API_KEY")
+SUDO_PASSWORD = env_config.get("SUDO_PASSWORD")
+MODEL_NAME = env_config.get("MODEL_NAME")
+TIMEOUT_BASH = env_config.get_int("TIMEOUT_BASH", 300)
+AGENTS_NUMBER = env_config.get_int("AGENTS_NUMBER", 2)
+RETRIEVAL = env_config.get_bool("RETRIEVAL")
+PERFECT_RETRIEVAL = env_config.get_bool("PERFECT_RETRIEVAL") and RETRIEVAL
+RAG_RETRIEVAL = env_config.get_bool("RAG_RETRIEVAL") and RETRIEVAL
 
 CORES = DEFAULT_VALUES["CORES"]
-REFINE_TIMES = int(os.environ.get("REFINE_TIMES", "1"))
-MAX_TURNS = os.environ.get("MAX_TURNS", "10")
+REFINE_TIMES = env_config.get_int("REFINE_TIMES", 1)
+MAX_TURNS = env_config.get("MAX_TURNS", "10")
 def initialize_agents():
     agent = Agent(
         human_in_loop = DEFAULT_VALUES["HUMAN_IN_LOOP"],
@@ -63,20 +52,49 @@ def parse_args():
 
 def main(args):
     github_repo = args.repo_url
+    print(env_config.describe_source())
+    ### Before the agents exist: this patches the LLM SDKs they are about to use.
+    tracing.init()
     agent = initialize_agents()
     start_time = time()
     print(f'Compiling {github_repo}...')
     print(f"Using the following parameters: {CORES} cores, {REFINE_TIMES} refine times")
-    agent.compile_repo(
-        repo_url = github_repo,
-        optimization_level = DEFAULT_VALUES["OPTIMIZATION_LEVEL"],
-        compiled_dir = args.compiled_dir,
-        log_dir = DEFAULT_VALUES["LOG_DIR"],
-        # venv_dir = DEFAULT_VALUES["VENV_DIR"],
-        print_cost = DEFAULT_VALUES["PRINT_COST"],
-        cores = CORES,
-        refine_times=REFINE_TIMES,
+
+    repo_name = github_repo.split('/')[-1].split('\\')[-1].replace('.git', '')
+    retrieval_mode = (
+        'retriever-agent' if AGENTS_NUMBER == 3
+        else 'none' if not RETRIEVAL
+        else 'perfect' if PERFECT_RETRIEVAL
+        else 'rag' if RAG_RETRIEVAL
+        else 'heuristic'
     )
+    try:
+        with tracing.repo_build(
+            repo_name,
+            repo_url=github_repo,
+            metadata={
+                'model': MODEL_NAME,
+                'agents_number': AGENTS_NUMBER,
+                'retrieval': retrieval_mode,
+                'max_turns': MAX_TURNS,
+                'refine_times': REFINE_TIMES,
+                'cores': CORES,
+            },
+            tags=[str(MODEL_NAME), f'agents-{AGENTS_NUMBER}', f'retrieval-{retrieval_mode}'],
+        ) as build_span:
+            agent.compile_repo(
+                repo_url = github_repo,
+                optimization_level = DEFAULT_VALUES["OPTIMIZATION_LEVEL"],
+                compiled_dir = args.compiled_dir,
+                log_dir = DEFAULT_VALUES["LOG_DIR"],
+                # venv_dir = DEFAULT_VALUES["VENV_DIR"],
+                print_cost = DEFAULT_VALUES["PRINT_COST"],
+                cores = CORES,
+                refine_times=REFINE_TIMES,
+            )
+            tracing.update(build_span, output={'compile_seconds': round(time() - start_time, 2)})
+    finally:
+        tracing.shutdown()
     print(f'Compilation completed for {github_repo}, took {time() - start_time} seconds.')
     
     

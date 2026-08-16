@@ -17,8 +17,7 @@ import asyncio
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeout
 from tavily import TavilyClient
 
-from dotenv import load_dotenv
-load_dotenv()
+import env_config
 
 class Extract_Build_Information_and_Links(BaseModel):
     Build_Instructions: str = ''
@@ -30,12 +29,12 @@ class Extract_Build_Information_and_External_Links(BaseModel):
     Build_Instructions: str = ''
     External_URLs: list[str] = []
         
-API_KEY = os.environ.get('API_KEY')
-TAVILY_API_KEY = os.environ.get('TAVILY_API_KEY')
-MODEL_NAME = os.environ.get("MODEL_NAME")
+API_KEY = env_config.get('API_KEY')
+TAVILY_API_KEY = env_config.get('TAVILY_API_KEY')
+MODEL_NAME = env_config.get("MODEL_NAME")
 HUGGINGFACE_BASE_URL = "https://router.huggingface.co/v1"
 GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai/'
-DEEPSEEK_BASE_URL = os.environ.get("DEEPSEEK_BASE_URL") or "https://api.deepseek.com/v1"
+DEEPSEEK_BASE_URL = env_config.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
 
 # Lazy initialization — keys are required at runtime, not import time
 if MODEL_NAME:

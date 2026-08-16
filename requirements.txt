@@ -19,6 +19,8 @@ tavily-python
 nest_asyncio
 flutes
 python-dotenv
+langfuse>=4,<5
+opentelemetry-instrumentation-anthropic
 docker
 pyelftools
 pyjoern

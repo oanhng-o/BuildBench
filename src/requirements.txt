@@ -16,3 +16,5 @@ markdownify
 playwright
 tavily-python
 nest_asyncio
+langfuse>=4,<5
+opentelemetry-instrumentation-anthropic

@@ -194,6 +194,27 @@ See `data/README.md` for schema details and download instructions.
 | `RAG_RETRIEVAL` | Enable RAG retrieval (`True`/`False`) |
 | `PERFECT_RETRIEVAL` | Enable perfect retrieval (`True`/`False`) |
 | `TAVILY_API_KEY` | (Optional) Tavily API key for web search |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` | (Optional) Trace every build to Langfuse — see [Tracing](#tracing-langfuse) |
+| `BUILDBENCH_RUN_ID` | (Optional) Groups a run's repos into one Langfuse session; defaults to a timestamp |
+
+## Tracing (Langfuse)
+
+Set the three `LANGFUSE_*` variables and each repository build is traced: one
+trace per repo, containing the agent conversation, every LLM call with its
+prompt, completion and token usage, and every bash command with its exit code.
+When validation finishes, `compiled_percentage` and `is_compiled` are attached
+to the same trace as scores, so behaviour and outcome sit together.
+
+```bash
+LANGFUSE_PUBLIC_KEY=pk-lf-... LANGFUSE_SECRET_KEY=sk-lf-... \
+LANGFUSE_BASE_URL=https://cloud.langfuse.com \
+  ./scripts/run_container.sh run https://github.com/user/repo.git
+```
+
+Leave the keys unset, or set `LANGFUSE_TRACING=False`, and tracing is off. It is
+best-effort in any case: an unreachable Langfuse never fails a build. See
+[CONTAINER_ONLY.md](CONTAINER_ONLY.md#tracing-langfuse) for the trace layout and
+its caveats.
 
 ## Citation
 
