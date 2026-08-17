@@ -4,12 +4,14 @@
 # POSIX shell -- no Python environment, no pyjoern, no JVM.
 #
 # Usage:
-#   scripts/run_container.sh build
+#   scripts/run_container.sh build [--force]
 #       Build the base image and the worker image (offline, from the local base).
+#       The base is reused if it already exists; --force rebuilds it too.
 #
-#   scripts/run_container.sh run <repo-url> [more urls...]
-#   scripts/run_container.sh run --data <jsonl> [--start N] [--end N]
-#       Compile the given repos, one container each.
+#   scripts/run_container.sh run [--rebuild|--no-build] <repo-url> [more urls...]
+#   scripts/run_container.sh run [--rebuild|--no-build] --data <jsonl> [--start N] [--end N]
+#       Compile the given repos, one container each. Missing images are built
+#       automatically, so a fresh clone needs nothing but this one command.
 #
 # Configuration comes from .env in the project root (copy .env.example) or from
 # the environment; the environment wins. Point ENV_FILE elsewhere to use a
@@ -153,9 +155,45 @@ write_mounted_env() {
     done
 }
 
+image_exists() { docker image inspect "$1" >/dev/null 2>&1; }
+
+# A fresh clone has neither image, and `docker run` on a missing one fails with
+# "Unable to find image ... locally" followed by a pull attempt against Docker
+# Hub -- confusing for an image that is only ever built here. Check up front.
+require_docker() {
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "ERROR: docker is not installed or not on PATH." >&2
+        exit 1
+    fi
+    if ! docker info >/dev/null 2>&1; then
+        echo "ERROR: cannot talk to the Docker daemon." >&2
+        echo "       Start it (e.g. 'sudo systemctl start docker') or add yourself" >&2
+        echo "       to the 'docker' group, then try again." >&2
+        exit 1
+    fi
+}
+
 cmd_build() {
-    echo ">>> Building base image ($BASE_IMAGE) -- this takes a while (Joern is ~1.8 GB)"
-    docker build -t "$BASE_IMAGE" -f src/Dockerfile_compilation .
+    local force=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -f|--force) force=1; shift ;;
+            *) echo "Unknown option for build: $1" >&2; exit 1 ;;
+        esac
+    done
+
+    require_docker
+
+    # The base carries the whole toolchain plus Joern (~1.8 GB) and takes tens of
+    # minutes; the worker on top of it is one COPY. So rebuild the base only when
+    # it is missing or explicitly asked for, and the worker every time -- that is
+    # the one that has to pick up changes under src/.
+    if [ "$force" -eq 0 ] && image_exists "$BASE_IMAGE"; then
+        echo ">>> Base image ($BASE_IMAGE) already exists; reusing it (--force rebuilds)"
+    else
+        echo ">>> Building base image ($BASE_IMAGE) -- this takes a while (Joern is ~1.8 GB)"
+        docker build -t "$BASE_IMAGE" -f src/Dockerfile_compilation .
+    fi
 
     echo ">>> Building worker image ($WORKER_IMAGE) from the local base"
     docker build --build-arg BASE_IMAGE="$BASE_IMAGE" \
@@ -174,6 +212,21 @@ print('imports OK')
     docker run --rm --entrypoint bash "$WORKER_IMAGE" -c \
         'gcc --version | head -1 && cmake --version | head -1 && java -version 2>&1 | head -1'
     echo ">>> Build OK"
+}
+
+# So that a fresh clone works with 'run' alone. Building is otherwise a step the
+# user has to know about, and forgetting it fails deep inside `docker run`.
+ensure_images() {
+    if image_exists "$WORKER_IMAGE"; then
+        return 0
+    fi
+    if [ "${AUTO_BUILD:-1}" = "0" ]; then
+        echo "ERROR: image '$WORKER_IMAGE' does not exist and AUTO_BUILD=0." >&2
+        echo "       Run: scripts/run_container.sh build" >&2
+        exit 1
+    fi
+    echo ">>> Image '$WORKER_IMAGE' not found -- building it first (one time only)."
+    cmd_build
 }
 
 # Turn the arguments into config/repos.json, which the worker indexes by JOB_INDEX.
@@ -208,6 +261,17 @@ PY
 }
 
 cmd_run() {
+    local rebuild=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --rebuild)  rebuild=1; shift ;;
+            --no-build) AUTO_BUILD=0; shift ;;
+            *) break ;;
+        esac
+    done
+
+    require_docker
+
     # Checked before the mount: docker silently creates a *directory* at a bind
     # source that does not exist, which would then shadow /app/.env with an empty
     # dir and leave the worker with no configuration at all.
@@ -224,6 +288,12 @@ cmd_run() {
     if [ $# -eq 0 ]; then
         echo "ERROR: give a repo URL or --data <jsonl>." >&2
         exit 1
+    fi
+
+    if [ "$rebuild" -eq 1 ]; then
+        cmd_build
+    else
+        ensure_images
     fi
 
     write_mounted_env
@@ -272,13 +342,22 @@ usage() {
 Run BuildBench entirely inside containers. The host needs only Docker.
 
 Usage:
-  scripts/run_container.sh build
-  scripts/run_container.sh run <repo-url> [more urls...]
-  scripts/run_container.sh run --data <jsonl> [--start N] [--end N]
+  scripts/run_container.sh build [--force]
+  scripts/run_container.sh run [--rebuild|--no-build] <repo-url> [more urls...]
+  scripts/run_container.sh run [--rebuild|--no-build] --data <jsonl> [--start N] [--end N]
 
-Settings come from .env in the project root:
+'run' builds the images itself when they are missing, so a fresh clone needs
+only:
 
   cp .env.example .env     # then fill in API_KEY
+  scripts/run_container.sh run <repo-url>
+
+'build' does the same up front -- useful to get the long base build (Joern is
+~1.8 GB) out of the way. It reuses an existing base image; --force rebuilds it.
+The worker image is rebuilt every time, so run 'build' after editing src/, or
+pass --rebuild to 'run'. --no-build fails instead of building.
+
+Settings come from .env in the project root:
 
 The keys are mounted read-only into each container and read from the file there,
 so they stay out of `docker inspect`.
@@ -312,7 +391,9 @@ win over .env:
   MAX_TURNS      default: 10
   TIMEOUT_BASH   per-command timeout in seconds, default: 3600
   CORES          workers for the validation step, default: 8
+  BASE_IMAGE     default: docker_image_compilation
   WORKER_IMAGE   default: buildbench_worker
+  AUTO_BUILD     0 disables the automatic build in 'run' (same as --no-build)
 EOF
 }
 

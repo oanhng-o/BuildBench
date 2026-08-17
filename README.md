@@ -20,6 +20,9 @@ pip install -r requirements.txt
 
 ### Docker Images
 
+For the host-driven modes below. The container-only path builds its own images —
+skip this and see [Container-Only](#container-only-no-host-python-environment).
+
 ```bash
 # Build base image (compilers, build tools, Python deps)
 sudo docker build -t docker_image_compilation -f src/Dockerfile_compilation .
@@ -36,9 +39,13 @@ Clone, compile and validate all happen inside one container — the host needs o
 Docker. See [CONTAINER_ONLY.md](CONTAINER_ONLY.md).
 
 ```bash
-./scripts/run_container.sh build
-API_KEY=$API_KEY ./scripts/run_container.sh run https://github.com/user/repo.git
+cp .env.example .env     # then fill in API_KEY
+./scripts/run_container.sh run https://github.com/user/repo.git
 ```
+
+The images are built on first use, so that is all a fresh clone needs. Run
+`./scripts/run_container.sh build` first if you would rather get the ~10 min
+base build out of the way separately.
 
 The modes below instead drive containers from the host, which requires the
 `requirements.txt` environment (including `pyjoern` and a JVM for validation).

@@ -18,6 +18,16 @@ works and is untouched.)
 ~10 min and ~9.5 GB: Ubuntu 22.04 with gcc/cmake/ninja/Java 17, plus Joern
 (1.7 GB) and Playwright browsers. Ends by printing `Build OK`.
 
+This step is optional — `run` builds whatever is missing on its own, so a fresh
+clone works with step 2 and 3 alone. Doing it up front just separates the long
+build from the first compile.
+
+The base image is reused once it exists; `build --force` rebuilds it. The worker
+image is rebuilt on every `build`, which is what picks up changes under `src/` —
+after editing the source, run `build` again or pass `run --rebuild`.
+`run --no-build` (or `AUTO_BUILD=0`) fails instead of building, for CI that wants
+the image to be prebuilt.
+
 ### 2. Configure
 
 ```bash
