@@ -149,14 +149,20 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
             "\nRespond with json only, matching this schema: "
             + json.dumps(response_format.model_json_schema())
         )
-        client = OpenAI(api_key=API_KEY, base_url=DEEPSEEK_BASE_URL)
+        client = OpenAI(
+            api_key=API_KEY, 
+            base_url=DEEPSEEK_BASE_URL,
+            default_headers= {
+               "User-Agent": "claude-cli/1.0.0 (external, cli)",
+               "X-App": "cli",
+           })
         completion = client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": input}
             ],
-            response_format={"type": "json_object"},
+            response_format={"type": "json_object"}
         )
         response = completion.choices[0].message.content
         if response.startswith("```json"):
