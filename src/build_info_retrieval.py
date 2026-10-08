@@ -152,10 +152,7 @@ def llm_response_structured(model_name, response_format, system_prompt, input):
         client = OpenAI(
             api_key=API_KEY, 
             base_url=DEEPSEEK_BASE_URL,
-            default_headers= {
-               "User-Agent": "claude-cli/1.0.0 (external, cli)",
-               "X-App": "cli",
-           })
+            )
         completion = client.chat.completions.create(
             model=model_name,
             messages=[

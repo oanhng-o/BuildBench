@@ -82,10 +82,6 @@ class Agent:
             print("Using DeepSeek model for compilation")
             ### OpenAI-compatible endpoint; override for a proxy or a self-hosted deployment
             self.llm_config['base_url'] = env_config.get("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
-            self.llm_config['default_headers'] = {
-                "User-Agent": "claude-cli/1.0.0 (external, cli)",
-                "X-App": "cli",
-            }
         ### AutoGen prices a run from its own hardcoded table (OAI_PRICE1K), which
         ### only covers OpenAI/Anthropic ids. Anything else logs "Model X is not
         ### found. The cost will be 0" and reports zero. MODEL_PRICE supplies the
